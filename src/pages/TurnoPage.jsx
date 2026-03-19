@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, query, where, limit } from 'firebase/firestore';
+import { collection, getDocs, query, where, limit, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { crearNotificacion } from '../services/notificacionesService';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ui/ToastContext';
 import { EntradaForm } from '../components/vehiculos/EntradaForm';
@@ -51,6 +52,12 @@ export function TurnoPage() {
   // Mi Turno — cobros
   const [misCobros, setMisCobros]           = useState([]);
   const [cargandoCobros, setCargandoCobros] = useState(false);
+  // Mi Turno — modal anular/editar
+  const [modalAccion, setModalAccion]       = useState(null); // { tipo: 'anular'|'editar', cobro }
+  const [motivoInput, setMotivoInput]       = useState('');
+  const [nuevoMonto, setNuevoMonto]         = useState('');
+  const [nuevoMetodo, setNuevoMetodo]       = useState('');
+  const [guardandoAccion, setGuardandoAccion] = useState(false);
 
   // Horario
   const [horarioSemana, setHorarioSemana]       = useState(null);
@@ -163,6 +170,91 @@ export function TurnoPage() {
       setMisCobros([]);
     } finally {
       setCargandoCobros(false);
+    }
+  }
+
+  function abrirAnular(cobro) {
+    setModalAccion({ tipo: 'anular', cobro });
+    setMotivoInput('');
+  }
+
+  function abrirEditar(cobro) {
+    setModalAccion({ tipo: 'editar', cobro });
+    setMotivoInput('');
+    setNuevoMonto(String(cobro.monto));
+    setNuevoMetodo(cobro.metodoPago || '');
+  }
+
+  function cerrarModalAccion() {
+    setModalAccion(null);
+    setMotivoInput('');
+    setNuevoMonto('');
+    setNuevoMetodo('');
+  }
+
+  async function confirmarAccion() {
+    if (!motivoInput.trim()) { mostrarToast('Debes escribir el motivo', 'warning'); return; }
+    const { tipo, cobro } = modalAccion;
+    if (tipo === 'editar') {
+      const val = parseFloat(nuevoMonto);
+      if (isNaN(val) || val < 0) { mostrarToast('Monto inválido', 'warning'); return; }
+    }
+    setGuardandoAccion(true);
+    try {
+      const cobroRef = doc(db, 'cobros', cobro.id);
+      if (tipo === 'anular') {
+        await updateDoc(cobroRef, {
+          anulado: true,
+          motivoAnulacion: motivoInput.trim(),
+          anuladoPor: trabajadorSel?.nombre,
+          fechaAnulacion: new Date(),
+        });
+        await crearNotificacion({
+          tipo: 'anulacion',
+          cobroId: cobro.id,
+          placa: cobro.placa,
+          clienteNombre: cobro.clienteNombre || '',
+          montoOriginal: cobro.monto,
+          montoNuevo: null,
+          metodoPagoNuevo: null,
+          motivo: motivoInput.trim(),
+          trabajador: trabajadorSel?.nombre,
+          trabajadorId: trabajadorSel?.id,
+          turnoId: turnoActivo.id,
+        });
+        mostrarToast('Cobro anulado y notificación enviada al admin', 'success');
+      } else {
+        const montoNuevo = parseFloat(nuevoMonto);
+        await updateDoc(cobroRef, {
+          monto: montoNuevo,
+          metodoPago: nuevoMetodo || cobro.metodoPago,
+          motivoEdicion: motivoInput.trim(),
+          editadoPor: trabajadorSel?.nombre,
+          fechaEdicion: new Date(),
+          montoOriginal: cobro.montoOriginal ?? cobro.monto,
+        });
+        await crearNotificacion({
+          tipo: 'edicion',
+          cobroId: cobro.id,
+          placa: cobro.placa,
+          clienteNombre: cobro.clienteNombre || '',
+          montoOriginal: cobro.monto,
+          montoNuevo,
+          metodoPagoNuevo: nuevoMetodo || null,
+          motivo: motivoInput.trim(),
+          trabajador: trabajadorSel?.nombre,
+          trabajadorId: trabajadorSel?.id,
+          turnoId: turnoActivo.id,
+        });
+        mostrarToast('Cobro editado y notificación enviada al admin', 'success');
+      }
+      cerrarModalAccion();
+      cargarMisCobros();
+    } catch (e) {
+      console.error(e);
+      mostrarToast('Error al procesar la acción', 'error');
+    } finally {
+      setGuardandoAccion(false);
     }
   }
 
@@ -598,12 +690,16 @@ export function TurnoPage() {
                             <th className="pb-2 pr-3">Llave</th>
                             <th className="pb-2 pr-3">Hora</th>
                             <th className="pb-2 text-right">Monto</th>
+                            <th className="pb-2"></th>
                           </tr>
                         </thead>
                         <tbody>
                           {misCobros.map(c => (
-                            <tr key={c.id} className="border-b border-border/40">
-                              <td className="py-2 pr-3 font-mono font-bold text-txt">{c.placa}</td>
+                            <tr key={c.id} className={`border-b border-border/40 ${c.anulado ? 'opacity-50' : ''}`}>
+                              <td className="py-2 pr-3 font-mono font-bold text-txt">
+                                <span className={c.anulado ? 'line-through' : ''}>{c.placa}</span>
+                                {c.anulado && <span className="ml-1 text-[10px] text-danger font-semibold uppercase">Anulado</span>}
+                              </td>
                               <td className="py-2 pr-3 text-txt2">{c.clienteNombre || '—'}</td>
                               <td className="py-2 pr-3">
                                 <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${c.tipo === 'ingreso' ? 'bg-accent/10 text-accent' : 'bg-yellow/10 text-yellow'}`}>
@@ -620,15 +716,32 @@ export function TurnoPage() {
                                 {c.fechaCobro ? new Date(c.fechaCobro?.seconds ? c.fechaCobro.seconds * 1000 : c.fechaCobro).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : '—'}
                               </td>
                               <td className="py-2 text-right font-mono font-bold text-txt">{formatMonto(c.monto)}</td>
+                              <td className="py-2 pl-2 text-right whitespace-nowrap">
+                                {!c.anulado && (
+                                  <>
+                                    <button
+                                      onClick={() => abrirEditar(c)}
+                                      className="text-xs px-2 py-1 rounded-lg bg-blue/10 text-blue hover:bg-blue/20 font-semibold mr-1 transition-colors"
+                                    >Editar</button>
+                                    <button
+                                      onClick={() => abrirAnular(c)}
+                                      className="text-xs px-2 py-1 rounded-lg bg-danger/10 text-danger hover:bg-danger/20 font-semibold transition-colors"
+                                    >Anular</button>
+                                  </>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t border-border">
-                      <span className="text-sm text-txt3">{misCobros.length} cobro{misCobros.length !== 1 ? 's' : ''}</span>
+                      <span className="text-sm text-txt3">
+                        {misCobros.filter(c => !c.anulado).length} cobro{misCobros.filter(c => !c.anulado).length !== 1 ? 's' : ''}
+                        {misCobros.some(c => c.anulado) && <span className="ml-1 text-danger text-xs">({misCobros.filter(c => c.anulado).length} anulado{misCobros.filter(c => c.anulado).length !== 1 ? 's' : ''})</span>}
+                      </span>
                       <span className="font-display font-bold text-accent text-lg">
-                        Total: {formatMonto(calcularTotal(misCobros))}
+                        Total: {formatMonto(calcularTotal(misCobros.filter(c => !c.anulado)))}
                       </span>
                     </div>
                   </>
@@ -639,6 +752,94 @@ export function TurnoPage() {
 
         </main>
       </div>
+
+      {/* Modal Anular / Editar cobro */}
+      {modalAccion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-surface border border-border rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+            <h3 className="font-display text-lg font-semibold text-txt">
+              {modalAccion.tipo === 'anular' ? '🚫 Anular cobro' : '✏️ Editar cobro'}
+            </h3>
+            <div className="bg-bg2 border border-border rounded-xl px-4 py-3 text-sm space-y-1">
+              <div className="flex justify-between">
+                <span className="text-txt3">Placa</span>
+                <span className="font-mono font-bold text-txt">{modalAccion.cobro.placa}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-txt3">Monto actual</span>
+                <span className="font-mono text-txt">{formatMonto(modalAccion.cobro.monto)}</span>
+              </div>
+              {modalAccion.cobro.clienteNombre && (
+                <div className="flex justify-between">
+                  <span className="text-txt3">Cliente</span>
+                  <span className="text-txt">{modalAccion.cobro.clienteNombre}</span>
+                </div>
+              )}
+            </div>
+
+            {modalAccion.tipo === 'editar' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-txt3 mb-1.5 uppercase tracking-wide">Nuevo monto (S/.)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.50"
+                    value={nuevoMonto}
+                    onChange={e => setNuevoMonto(e.target.value)}
+                    className="w-full bg-bg2 border border-border rounded-xl px-3 py-2.5 text-sm text-txt focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-txt3 mb-1.5 uppercase tracking-wide">Método de pago</label>
+                  <select
+                    value={nuevoMetodo}
+                    onChange={e => setNuevoMetodo(e.target.value)}
+                    className="w-full bg-bg2 border border-border rounded-xl px-3 py-2.5 text-sm text-txt focus:outline-none focus:border-accent"
+                  >
+                    <option value="">Sin cambio</option>
+                    {['Efectivo','Yape','Plin','Transferencia','Tarjeta'].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-txt3 mb-1.5 uppercase tracking-wide">
+                Motivo <span className="text-danger">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={motivoInput}
+                onChange={e => setMotivoInput(e.target.value)}
+                placeholder={modalAccion.tipo === 'anular' ? 'Ej: Cliente pagó de más, se cometió un error...' : 'Ej: Se ingresó el monto incorrecto...'}
+                className="w-full bg-bg2 border border-border rounded-xl px-3 py-2.5 text-sm text-txt focus:outline-none focus:border-accent resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={cerrarModalAccion}
+                disabled={guardandoAccion}
+                className="flex-1 py-2.5 rounded-xl border border-border text-txt2 text-sm font-semibold hover:bg-surface2 transition-colors"
+              >Cancelar</button>
+              <button
+                onClick={confirmarAccion}
+                disabled={guardandoAccion || !motivoInput.trim()}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors disabled:opacity-50
+                  ${modalAccion.tipo === 'anular'
+                    ? 'bg-danger hover:bg-red-600 text-white'
+                    : 'bg-blue hover:bg-blue/80 text-white'
+                  }`}
+              >
+                {guardandoAccion ? 'Guardando...' : modalAccion.tipo === 'anular' ? 'Confirmar anulación' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Arqueo Modal */}
       <ArqueoModal
