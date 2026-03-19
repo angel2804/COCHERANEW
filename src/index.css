@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Reset base ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  min-height: 100vh;
+}
+
+body {
+  font-family: 'Nunito', sans-serif;
+  background: #091e1e;
+  color: #e0f0f0;
+}
+
+/* ── Modo claro — se activa cuando <html> NO tiene .dark ─────────────────── */
+html:not(.dark) body {
+  background: #f4fafa;
+  color: #0a2828;
+}
+
+/* Override de clases Tailwind en modo claro */
+html:not(.dark) .bg-bg      { background-color: #f4fafa !important; }
+html:not(.dark) .bg-bg2     { background-color: #e8f4f4 !important; }
+html:not(.dark) .bg-bg3     { background-color: #dceeed !important; }
+html:not(.dark) .bg-surface  { background-color: #ffffff !important; }
+html:not(.dark) .bg-surface2 { background-color: #ecf6f6 !important; }
+html:not(.dark) .text-txt   { color: #0a2828 !important; }
+html:not(.dark) .text-txt2  { color: #2a5858 !important; }
+html:not(.dark) .text-txt3  { color: #5a9090 !important; }
+html:not(.dark) .border-border  { border-color: #a8d4d4 !important; }
+html:not(.dark) .border-border2 { border-color: #88c0c0 !important; }
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbar personalizado ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1e5a5a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #246868; }
+
+/* ── Botones compartidos (usados en Modal y otros) ───────────────────────── */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm
+           transition-all duration-150 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-success   { @apply bg-accent hover:bg-accent2 text-[#0a2828]; }
+  .btn-danger    { @apply bg-danger hover:bg-red-600 text-white; }
+  .btn-warning   { @apply bg-yellow hover:bg-yellow/80 text-[#0a2828]; }
+  .btn-secondary { @apply bg-surface2 hover:bg-border text-txt border border-border; }
+  .btn-ghost     { @apply bg-transparent hover:bg-surface2 text-txt2; }
+}
+
+/* ── Print styles ────────────────────────────────────────────────────────── */
+@media print {
+  body > *:not(#print-root) { display: none !important; }
+  #print-root { display: block !important; }
+  .hide-for-print { display: none !important; }
+}
