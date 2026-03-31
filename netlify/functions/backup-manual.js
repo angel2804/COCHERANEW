@@ -14,10 +14,9 @@ export const handler = async (event) => {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ok: true,
-        archivo:        resultado.archivo,
+        ok:             true,
+        backupId:       resultado.backupId,
         totalRegistros: resultado.totalRegistros,
-        tamanoBytes:    resultado.tamanoBytes,
       }),
     };
   } catch (err) {
