@@ -18,6 +18,7 @@ const NAV_ADMIN = [
 const NAV_DEV = [
   { to: '/dashboard/usuarios',  label: 'Usuarios',       icon: '👥' },
   { to: '/dashboard/config',    label: 'Configuración',  icon: '⚙️' },
+  { to: '/dashboard/backups',   label: 'Backups',        icon: '💾' },
 ];
 
 function NavItem({ to, label, icon, end }) {

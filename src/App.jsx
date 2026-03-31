@@ -18,6 +18,7 @@ import { HistorialSection } from './pages/dashboard/sections/HistorialSection';
 import { UsuariosSection }  from './pages/dashboard/sections/UsuariosSection';
 import { ConfigSection }       from './pages/dashboard/sections/ConfigSection';
 import { TrabajadoresSection } from './pages/dashboard/sections/TrabajadoresSection';
+import { BackupsPage }         from './pages/BackupsPage';
 
 export default function App() {
   return (
@@ -41,6 +42,7 @@ export default function App() {
                 <Route path="clientes"  element={<ClientesPage />} />
                 <Route path="reportes"  element={<ReportesPage />} />
                 <Route path="horarios"  element={<HorariosPage />} />
+                <Route path="backups"   element={<BackupsPage />} />
               </Route>
             </Route>
 
